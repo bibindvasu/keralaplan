@@ -1,0 +1,569 @@
+---
+title: "Kerala_Plan_Analysis"
+output: html_notebook
+---
+
+
+```{r}
+# Reading libraries
+library(tidyverse)
+library(readr)
+library(dplyr)
+library(foreign)
+library(psych)
+library(lmtest)
+library(sandwich)
+library(survival)
+library(haven)
+library(kableExtra)
+library(pastecs)
+library(data.table)
+library(imputeTS) # Impute Missing Values in Time Series
+library(sjPlot)
+
+```
+
+
+
+
+```{r}
+setwd("/Users/bibindvasu/Documents/KeralaStudy")
+# Reading the file 
+df_plan_allocation <- read.csv("kerala_plan.csv")
+
+# Data Cleaning
+
+df_plan_allocation$population <- na_interpolation(df_plan_allocation$population)
+df_plan_allocation$mlifeexp <- na_interpolation(df_plan_allocation$mlifeexp)
+df_plan_allocation$flifeexp <- na_interpolation(df_plan_allocation$flifeexp)
+
+df_plan_allocation$imr <- as.integer(df_plan_allocation$imr)
+df_plan_allocation[is.na(df_plan_allocation)] <- 0
+head(df_plan_allocation)
+tail(df_plan_allocation)
+```
+
+
+```{r}
+# Descriptive statistics
+stat.desc(df_plan_allocation)
+```
+
+
+```{r}
+# Forming new variables health outlay and expenditure over total plan outlay and expenditure
+df_plan_allocation <- df_plan_allocation%>%mutate(health_outlay = (ss_outlay+mph_outlay+sw_outlay+nut_outlay), health_exp = (ss_exp+mph_exp+sw_exp+nut_exp))
+df_plan_allocation$health_percapita <- df_plan_allocation$health_exp*100000/df_plan_allocation$population
+
+names(df_plan_allocation)
+
+
+```
+
+
+
+
+```{r}
+
+#Build a subset data frame
+v <- df_plan_allocation %>% select(plan_outlay,plan_exp) #pick the variable 
+
+m <- summary(v)
+
+s <- stat.desc(v)
+kable(m, format = "html", caption = "Descriptive Statistics") %>%
+  kable_styling(bootstrap_options = "striped",full_width = F) %>%
+  add_header_above(c(" ", "Plan Outlay","Plan Expenditure"))
+
+kable(s, format = "html", caption = "Descriptive Statistics") %>%
+  kable_styling(bootstrap_options = "striped",full_width = F) %>%
+  add_header_above(c(" ", "Plan Outlay","Plan Expenditure"))
+
+kable(s, format = "html", caption = "Descriptive Statistics") %>%
+  kable_styling(bootstrap_options = "striped",full_width = F) %>%
+  add_header_above(c(" ", "Plan Outlay","Plan Expenditure"))
+
+
+
+
+```
+
+
+
+
+```{r}
+library(tidyverse)
+df_plan_allocation_normalized <- df_plan_allocation %>%
+  
+  mutate_at(vars(plan_outlay: health_percapita), funs(./duration))
+
+# create percentage health over outlay and exp
+df_plan_allocation_normalized <- df_plan_allocation_normalized%>%mutate(percent_health_outlay = health_outlay/plan_outlay, percent_health_exp = health_exp/plan_exp)
+
+variable.names(df_plan_allocation_normalized)
+```
+
+
+```{r}
+library(stargazer)
+```
+
+
+
+```{r}
+# Regression of health outlay over treatment indicator
+mod1 <- lm(health_outlay~treat, df_plan_allocation_normalized)
+mod2 <- lm(health_exp~treat, df_plan_allocation_normalized)
+
+# Regression of percent health over treatment indicator
+mod3 <- lm(percent_health_outlay~treat, df_plan_allocation_normalized)
+mod4 <- lm(percent_health_exp~treat, df_plan_allocation_normalized)
+
+model1 <- lm(health_percapita~treat, df_plan_allocation_normalized)
+
+stargazer(mod2,mod4,model1,
+type="html",
+out="star_linear_1.doc",
+intercept.bottom = F,
+intercept.top = T,
+digits=2)
+
+
+
+
+```
+
+```{r}
+model1 <- lm(health_percapita~treat, df_plan_allocation_normalized)
+stargazer(mod1, mod2, 
+type="html",
+out="star_linear_2.doc",
+intercept.bottom = F,
+intercept.top = T,
+ci = T, digits=2,
+notes = "This is a caption.",
+model.names = T,
+single.row = T,
+covariate.labels = c("Constant","Plan",
+"Virginica", "Petal Width",
+"Versicolor x Petal Width",
+"Virginica x Petal Width"))
+
+```
+
+
+
+```{r}
+stargazer(mod1, mod2, 
+type="html",
+out="star_linear_2.doc",
+intercept.bottom = F,
+intercept.top = T,
+ci = T, digits=2,
+notes = "This is a caption.",
+model.names = T,
+single.row = T,
+covariate.labels = c("Constant","Plan",
+"Virginica", "Petal Width",
+"Versicolor x Petal Width",
+"Virginica x Petal Width"))
+```
+
+
+```{r}
+stargazer(mod1, mod2,
+type="html",
+out="star_linear_3.doc",
+intercept.bottom = F,
+intercept.top = T,
+digits=2)
+```
+
+
+
+
+
+
+
+```{r}
+mod1 <- lm(imr~treat, df_plan_allocation_normalized)
+mod2 <- lm(imr~treat + percent_health_exp , df_plan_allocation_normalized)
+mod3 <- lm(imr~treat + percent_health_exp + literacy_male, df_plan_allocation_normalized)
+mod4 <- lm(imr~treat + percent_health_exp + literacy_male +literacy_female, df_plan_allocation_normalized)
+mod5 <- lm(imr~treat + log1p (health_exp), df_plan_allocation_normalized)
+mod6 <- lm(imr~treat + log1p (health_exp) + literacy_male, df_plan_allocation_normalized)
+mod7 <- lm(imr~treat + log1p (health_exp) + literacy_male+literacy_female, df_plan_allocation_normalized)
+
+
+
+stargazer(mod1, mod2, mod3,mod4,mod5,mod6,mod7,
+type="html",
+out="star_linear_4.doc",
+intercept.bottom = F,
+intercept.top = T,
+digits=2)
+```
+
+```{r}
+require(foreign)
+require(ggplot2)
+require(MASS)
+```
+
+
+```{r}
+
+
+out1 <- glm(imr~treat +(health_percapita),family= poisson(),data=df_plan_allocation_normalized)
+summary(out1)
+
+out2 <- glm(log1p(imr)~treat +log1p(health_percapita),family= poisson(),data=df_plan_allocation_normalized)
+summary(out2)
+
+out3 <- glm.nb((imr)~treat +(health_percapita),data=df_plan_allocation_normalized)
+summary(out3)
+
+
+
+stargazer(out1,
+type="html",
+out="star_linear_imr.doc",
+intercept.bottom = F,
+intercept.top = T,
+digits=2)
+
+```
+
+
+```{r}
+library(car)
+vif(out1)
+```
+
+
+```{r}
+exp(-0.001)
+```
+
+
+```{r}
+df_plan_allocation_normalized$imr
+
+```
+
+
+```{r}
+dat <- read.dta("https://stats.idre.ucla.edu/stat/stata/dae/nb_data.dta")
+dat <- within(dat, {
+    prog <- factor(prog, levels = 1:3, labels = c("General", "Academic", "Vocational"))
+    id <- factor(id)
+})
+
+summary(dat)
+```
+
+
+
+
+```{r}
+stargazer(mod1, mod2, mod3,mod4,
+type="html",
+out="star_linear_5.doc",
+intercept.bottom = F,
+intercept.top = T,
+digits=2)
+```
+
+
+```{r}
+library(jtools)
+summ(mod7)
+```
+
+
+```{r}
+effect_plot(mod3, pred = literacy_male, interval = TRUE, plot.points = TRUE)
+effect_plot(mod3, pred = percent_health_exp, interval = TRUE, plot.points = TRUE)
+
+effect_plot(mod4, pred = literacy_male, interval = TRUE, plot.points = TRUE)
+
+```
+
+
+```{r}
+summ(mod7, robust = "HC1")
+```
+
+```{r}
+plot_summs(mod7, scale = TRUE)
+```
+
+
+```{r}
+plot_summs(mod4, scale = TRUE, plot.distributions = TRUE, inner_ci_level = .9)
+```
+
+
+```{r}
+
+# Plotting the plan outlay growth over the plans
+
+ggplot(data=df_plan_allocation_normalized, aes(x=year, y=plan_outlay, group = treat)) +
+    geom_line() +
+    geom_point()+
+  xlab("Plan Periods") + ylab("Average Annual Plan Outlay in Lakhs") +
+  
+  theme(axis.text.x=element_text(angle=90,hjust=1)) +
+  geom_bar(stat='identity') +
+  
+    ggtitle("Kerala -Plan Outlay Growth")+ggsave("Kerala_plan_outlay.png")
+```
+
+```{r}
+
+
+# Plotting the percentage health_Exp rate
+
+ggplot(data=df_plan_allocation_normalized, aes(x=year, y=percent_health_exp, group = treat)) +
+    geom_line() +
+    geom_point()+
+  xlab("Year") + ylab("% health expenditure/total expenditure") +
+  
+  theme(axis.text.x=element_text(angle=90,hjust=1)) +
+  geom_bar(stat='identity') +
+  
+    ggtitle("Kerala - Rate of Health Expenditure on Total Plan Expenditure")+ggsave("Kerala_percent_health_Exp.png")
+```
+
+
+
+
+
+
+
+```{r}
+
+# Converting to Long Format
+
+df_plan_allocation_normalized_long <- df_plan_allocation_normalized %>%
+  gather(Total, Value, -c(year,treat))
+
+# Plotting the variables Plan Outlay and Plan Expenditure
+
+target <- c("plan_outlay", "plan_exp","health_exp","health_outlay")
+outlay_exp <- df_plan_allocation_normalized_long %>% 
+  filter(Total%in% target)
+
+
+
+
+
+```
+
+```{r}
+outlay_exp$Value <- as.numeric(outlay_exp$Value)
+p <- ggplot(outlay_exp, aes(x = year, y = Value, fill = Total)) +
+geom_bar( stat = "identity", position = position_dodge())+ geom_line()+scale_y_continuous( expand = c(0, 0)) +
+  theme(axis.text.x=element_text(angle=90,hjust=1))  + labs(title="Average Annual Plan Outlay in Lakhs over Plan Periods", y="Average Annual Plan Outlay in Lakhs", x="Plan Periods", caption="Source: Kerala Sate Planning Board")+
+   scale_color_manual(name="Cylinders",
+                       labels=c("Plan Outlay","Plan Expenditure","Health Outlay", "Health Expenditure"),
+                       values=c("red","green","blue","brown"))
+
+p
+
+
+
+
+```
+
+```{r}
+outlay_exp
+```
+
+
+```{r}
+data <- data.frame(outlay_exp$Total,outlay_exp$year,outlay_exp$Value)
+data_wide <- spread(data, 
+outlay_exp.Total, outlay_exp.Value)
+data_wide
+```
+
+
+```{r}
+ggplot(outlay_exp,aes(x=Year,y=Value, fill=Total), 
+       stat="identity",
+       fill=factor(Total)) +
+  geom_bar(stat="identity", position="dodge") +
+  facet_grid(cols = vars(Year))
+```
+
+```{r}
+library(ggplot2)
+library(viridis)
+library(hrbrthemes)
+data$outlay_exp.Value=as.numeric(data$outlay_exp.Value)
+ggplot(data, aes(fill=outlay_exp.year, y=outlay_exp.Value, x=outlay_exp.year)) + 
+    geom_bar(position="dodge", stat="identity") +
+   scale_y_discrete(guide = guide_axis(check.overlap = TRUE))+
+    scale_fill_viridis(discrete = T, option = "E") +scale_y_continuous( expand = c(0, 0)) +
+    ggtitle("Studying 4 species..") +
+    facet_wrap(~outlay_exp.Total) +
+    theme_ipsum() + theme(axis.text.x=element_text(angle=90,hjust=1)) +
+    theme(legend.position="none") +
+    xlab("")
+```
+```{r}
+mean(df_plan_allocation_normalized$percent_health_exp)
+```
+
+
+```{r}
+library(vcd)
+ggplot(df_plan_allocation_normalized) + 
+  geom_col(aes(x = year, y = health_exp), size = 1, color = "darkblue", fill = "white") +
+  geom_line(aes(x = year, y = percent_health_exp*1000000), size = 1.5, color="red", group=1) + 
+  scale_y_continuous(name ="Total Health Expenditure (Rupes Lakhs)",sec.axis = sec_axis(~./1000000, name = "Health Expenditure/Total Plan Expenditure"))+
+  theme(axis.text.x=element_text(angle=90,hjust=1)) +
+   xlab("Fiver Year Plans/ Annual Plan Period") +  ggtitle("Kerala-Overall Health Expenditure over the Plan Periods")+plot(0,type='n',axes=FALSE,ann=FALSE)+ggsave("Kerala_dual_axis.png")+ggsave("health_dual.png")
+  
+  legend("topleft", c("Share of Health Expenditure in the Overal Allocation", "Total Health Expenditure"), lty=c(1,1), lwd=c(2.5,2.5),col=c("red","blue"), cex =0.8)
+  
+
+```
+
+
+```{r}
+library(vcd)
+ggplot(df_plan_allocation_normalized) + 
+  geom_col(aes(x = year, y = health_exp), size = 1, color = "darkblue", fill = "white") +
+  geom_line(aes(x = year, y = health_percapita*10000000), size = 1.5, color="red", group=1) + 
+  scale_y_continuous(name ="Total Health Expenditure (Rupes Lakhs)",sec.axis = sec_axis(~./10000000, name = "Health Expenditure PerCapita"))+
+  theme(axis.text.x=element_text(angle=90,hjust=1)) +
+   xlab("Fiver Year Plans/ Annual Plan Period") +  ggtitle("Kerala-Overall Health Expenditure over the Plan Periods")+plot(0,type='n',axes=FALSE,ann=FALSE)+ggsave("Kerala_Health_PerCapita.png")
+  
+  legend("topleft", c("Health Expenditure Per Capita", "Total Health Expenditure"), lty=c(1,1), lwd=c(2.5,2.5),col=c("red","blue"), cex =0.8)
+  
+```
+
+
+```{r}
+# Reading Excel sheet
+library(readxl)  # install.packages("readxl") or install.packages("tidyverse")
+library(plyr)
+library(dplyr)
+library(tibble)
+```
+
+
+```{r}
+xl_data <- "/Users/bibindvasu/Documents/KeralaStudy/LSGData.xlsx"
+```
+
+
+```{r}
+# Before reading data, we will return the names of the sheets for later use:
+excel_sheets(path = xl_data)
+```
+
+
+
+```{r}
+sheets <- readxl::excel_sheets(xl_data)
+
+all_data <- do.call(rbind, lapply(sheets, function(X) 
+        transform(readxl::read_excel(xl_data, sheet = X), Year= X)))
+```
+
+```{r}
+head(all_data)
+```
+
+```{r}
+all_health <- filter(all_data, Sector%in%c( "Health","Drinking water","Sanitation, Waste processing","Nutrition"))
+                             
+```
+
+
+
+```{r}
+
+## load Rfast
+library(Rfast)
+## get column indices based on names
+col_st <- grep("GenX", colnames(all_health))  # index of "Var_1" col
+col_en <- grep("PFEx", colnames(all_health))  # index of "Var_2" col
+cols   <- c(col_st:col_en)  # indices of all cols from "Var_1" to "Var_2"
+
+## sum rows 4 to 5
+all_health$Health_Total <- rowsums(as.matrix(all_health[,cols]))
+```
+
+
+
+```{r}
+head(all_health)
+```
+
+
+```{r}
+all_years <- all_health[, colnames(all_health) != "Sector"]
+setDT(all_years)[, lapply(.SD, sum), keyby = Year]
+```
+
+
+```{r}
+
+
+# Plot2: Map color to Tree and add points
+
+
+p1 <- ggplot() + geom_line(aes(y = Health_Total, x = Year, group=1), size=1.5,
+                           data = all_years)
+p1
+```
+
+```{r}
+all_health[
+  order( all_health[,1], all_health[,10] ),
+]
+```
+
+```{r}
+ggplot(all_health, aes(Sector, Health_Total, group=Year, color=Year)) +
+   geom_line() +
+   geom_point()
+```
+
+
+```{r}
+library(ggplot2)
+library(directlabels)
+
+ggplot(all_health, aes(Sector, Health_Total, group=Year, color=Year)) +
+   geom_line() +
+   geom_point()+
+  scale_colour_discrete(guide = 'none') +
+  scale_x_discrete(expand=c(0, 1)) +
+  geom_dl(aes(label = Year), method = list(dl.trans(x = x + 0.2), "last.points", cex = 0.8)) +
+  geom_dl(aes(label = Year), method = list(dl.trans(x = x - 0.2), "first.points", cex = 0.8))
+```
+
+```{r}
+library(ggplot2)
+library(ggrepel)
+library(dplyr)
+
+all_health %>%
+  mutate(label = if_else(Year == max(Year), as.character(Sector), NA_character_)) %>%
+  ggplot(aes(x = Year, y = Health_Total, group = Sector, colour = Sector)) + 
+  geom_line() + 
+  geom_label_repel(aes(label = label),
+                  nudge_x = 1,
+                  na.rm = TRUE)+scale_color_discrete(guide = FALSE)+coord_cartesian(clip = 'off') 
+```
+
+
+```{r}
+barplot(Health_Total ~ Year, data = all_years)
+```
+
