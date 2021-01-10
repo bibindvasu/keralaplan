@@ -20,9 +20,9 @@ library(pastecs)
 library(data.table)
 library(imputeTS) # Impute Missing Values in Time Series
 library(sjPlot)
+library(stargazer)
 
 ```
-
 
 
 
@@ -52,7 +52,9 @@ stat.desc(df_plan_allocation)
 
 ```{r}
 # Forming new variables health outlay and expenditure over total plan outlay and expenditure
+# health outlay and health expenditure per plan period
 df_plan_allocation <- df_plan_allocation%>%mutate(health_outlay = (ss_outlay+mph_outlay+sw_outlay+nut_outlay), health_exp = (ss_exp+mph_exp+sw_exp+nut_exp))
+# health expenditure per capita per period
 df_plan_allocation$health_percapita <- df_plan_allocation$health_exp*100000/df_plan_allocation$population
 
 names(df_plan_allocation)
@@ -62,50 +64,15 @@ names(df_plan_allocation)
 
 
 
-
 ```{r}
-
-#Build a subset data frame
-v <- df_plan_allocation %>% select(plan_outlay,plan_exp) #pick the variable 
-
-m <- summary(v)
-
-s <- stat.desc(v)
-kable(m, format = "html", caption = "Descriptive Statistics") %>%
-  kable_styling(bootstrap_options = "striped",full_width = F) %>%
-  add_header_above(c(" ", "Plan Outlay","Plan Expenditure"))
-
-kable(s, format = "html", caption = "Descriptive Statistics") %>%
-  kable_styling(bootstrap_options = "striped",full_width = F) %>%
-  add_header_above(c(" ", "Plan Outlay","Plan Expenditure"))
-
-kable(s, format = "html", caption = "Descriptive Statistics") %>%
-  kable_styling(bootstrap_options = "striped",full_width = F) %>%
-  add_header_above(c(" ", "Plan Outlay","Plan Expenditure"))
-
-
-
-
-```
-
-
-
-
-```{r}
-library(tidyverse)
+# Per annum average of the outlay and expenditure data
 df_plan_allocation_normalized <- df_plan_allocation %>%
-  
   mutate_at(vars(plan_outlay: health_percapita), funs(./duration))
 
-# create percentage health over outlay and exp
+# create variables for share of health expenditure over total allocation
 df_plan_allocation_normalized <- df_plan_allocation_normalized%>%mutate(percent_health_outlay = health_outlay/plan_outlay, percent_health_exp = health_exp/plan_exp)
 
 variable.names(df_plan_allocation_normalized)
-```
-
-
-```{r}
-library(stargazer)
 ```
 
 
