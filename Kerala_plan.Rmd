@@ -529,8 +529,3 @@ all_health %>%
                   na.rm = TRUE)+scale_color_discrete(guide = FALSE)+coord_cartesian(clip = 'off') 
 ```
 
-
-```{r}
-barplot(Health_Total ~ Year, data = all_years)
-```
-
